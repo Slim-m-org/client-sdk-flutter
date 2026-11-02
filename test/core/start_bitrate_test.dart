@@ -126,7 +126,7 @@ void main() {
       expect(paramSet(fmtpOf(media, '1', 96)!), contains('x-google-start-bitrate=900'));
     });
 
-    test('caps camera at 1 Mbps but leaves screen share uncapped', () {
+    test('caps camera and screen share at 1 Mbps', () {
       final camera = TrackBitrateInfo(cid: 'c', transceiver: null, codec: 'VP8', maxbr: 3000);
       final screenShare = TrackBitrateInfo(
         cid: 'c',
@@ -137,7 +137,14 @@ void main() {
       );
 
       expect(computeTrackStartBitrate(camera), 1000);
-      expect(computeTrackStartBitrate(screenShare), 2700);
+      expect(computeTrackStartBitrate(screenShare), 1000);
+      expect(
+        computeTrackStartBitrate(
+          TrackBitrateInfo(cid: 'c', transceiver: null, codec: 'VP8', maxbr: 1000, isScreenShare: true),
+        ),
+        900,
+        reason: 'below the cap the 0.9 multiplier still applies',
+      );
     });
 
     test('gives no hint below the 300 kbps target floor', () {
@@ -157,7 +164,7 @@ void main() {
         TrackBitrateInfo(cid: 'other-track', transceiver: null, codec: 'VP8', maxbr: 3000, isScreenShare: true),
       ]);
 
-      expect(startBitrate, 2700);
+      expect(startBitrate, 1000);
     });
 
     test('ignores registered tracks with no section in the current SDP', () {
@@ -176,8 +183,8 @@ void main() {
         TrackBitrateInfo(cid: 'other-track', transceiver: null, codec: 'VP8', maxbr: 8000, isScreenShare: true),
       ];
 
-      // While both send, the uncapped screen share wins the connection-level max.
-      expect(computeConnectionStartBitrate(mediaOf(twoVideoSections), trackers()), 7200);
+      // While both send, the screen share's capped hint wins the connection-level max.
+      expect(computeConnectionStartBitrate(mediaOf(twoVideoSections), trackers()), 1000);
       // Once unpublished its entry is stale, so only the capped camera counts. Both
       // directions a removed sender can land on are excluded: `inactive` from a sendonly
       // transceiver, `recvonly` from a sendrecv one.
@@ -204,7 +211,7 @@ void main() {
         computeConnectionStartBitrate(media, [
           TrackBitrateInfo(cid: 'other-track', transceiver: null, codec: 'VP8', maxbr: 2000, isScreenShare: true),
         ]),
-        1800,
+        1000,
       );
     });
 
@@ -264,7 +271,7 @@ void main() {
       expect(computeStartBitrateCap(null), 1000);
     });
 
-    test('leaves screen share uncapped however slow the setup', () {
+    test('ramps the screen share cap down like the camera cap', () {
       final screenShare = TrackBitrateInfo(
         cid: 'c',
         transceiver: null,
@@ -274,9 +281,13 @@ void main() {
       );
       int? startBitrateAt(int setupMs) => computeTrackStartBitrate(screenShare, Duration(milliseconds: setupMs));
 
-      expect(startBitrateAt(1273), 2700, reason: 'a fast setup');
-      expect(startBitrateAt(2500), 2700, reason: 'mid-ramp');
-      expect(startBitrateAt(4061), 2700, reason: 'past the slow anchor');
+      expect(startBitrateAt(1273), 1000, reason: 'a fast setup');
+      expect(startBitrateAt(2500), 650, reason: 'mid-ramp');
+      expect(
+        startBitrateAt(4061),
+        computeStartBitrateCap(const Duration(milliseconds: 4061)),
+        reason: 'past the slow anchor',
+      );
     });
 
     test('applies the setup time to the connection-level value', () {
@@ -285,11 +296,11 @@ void main() {
         TrackBitrateInfo(cid: 'other-track', transceiver: null, codec: 'VP8', maxbr: 3000, isScreenShare: true),
       ];
 
-      expect(computeConnectionStartBitrate(mediaOf(twoVideoSections), trackBitrates), 2700);
-      // The screen share is exempt from the cap, so a slow setup lowers only the camera's hint.
+      expect(computeConnectionStartBitrate(mediaOf(twoVideoSections), trackBitrates), 1000);
+      // Both tracks are capped, so a slow setup lowers the connection-level value.
       expect(
         computeConnectionStartBitrate(mediaOf(twoVideoSections), trackBitrates, const Duration(milliseconds: 2500)),
-        2700,
+        650,
       );
       expect(
         computeConnectionStartBitrate(

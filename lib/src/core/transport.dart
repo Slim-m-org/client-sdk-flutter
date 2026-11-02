@@ -119,15 +119,16 @@ int computeStartBitrateCap(Duration? connectionSetupTime) {
 /// 90% of the target leaves ~10% headroom for the estimator to settle. The same multiplier
 /// is used for every codec because the target already reflects the codec's efficiency.
 /// Camera is capped at 1 Mbps, lowered for a slow [connectionSetupTime] (see
-/// [computeStartBitrateCap]), so the estimator does not open too aggressively. Screen share is
-/// exempt from both caps, because its content needs the bitrate immediately to stay legible.
+/// [computeStartBitrateCap]), so the estimator does not open too aggressively. Screen share
+/// takes the same caps: slimm patch, an uncapped hint seeded the estimator at 0.9 times the
+/// layer sum and overshot constrained uplinks.
 @internal
 int? computeTrackStartBitrate(TrackBitrateInfo trackbr, [Duration? connectionSetupTime]) {
   if (trackbr.maxbr < minTargetBitrateKbps) {
     return null;
   }
   final calculated = (trackbr.maxbr * startBitrateMultiplier).round();
-  return trackbr.isScreenShare ? calculated : math.min(calculated, computeStartBitrateCap(connectionSetupTime));
+  return math.min(calculated, computeStartBitrateCap(connectionSetupTime));
 }
 
 /// The single start bitrate for this peer connection: the largest hint among the video
