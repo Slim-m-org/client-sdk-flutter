@@ -47,6 +47,9 @@ const startBitrateMultiplier = 0.9;
 /// Maximum x-google-start-bitrate in kbps. 1 Mbps prevents BWE from starting too aggressively.
 const maxStartBitrateKbps = 1000;
 
+/// Maximum x-google-start-bitrate in kbps for a screen share, whose content needs more than a camera's.
+const maxScreenShareStartBitrateKbps = 3000;
+
 /// Minimum x-google-start-bitrate in kbps: libwebrtc's own default starting estimate. A target
 /// below this gets no hint, since seeding above the real capacity costs more than the ramp it
 /// saves, and a slow connection is seeded no higher than this.
@@ -120,15 +123,16 @@ int computeStartBitrateCap(Duration? connectionSetupTime) {
 /// is used for every codec because the target already reflects the codec's efficiency.
 /// Camera is capped at 1 Mbps, lowered for a slow [connectionSetupTime] (see
 /// [computeStartBitrateCap]), so the estimator does not open too aggressively. Screen share
-/// takes the same caps: slimm patch, an uncapped hint seeded the estimator at 0.9 times the
-/// layer sum and overshot constrained uplinks.
+/// is capped at [maxScreenShareStartBitrateKbps] without the setup-time ramp (slimm patch): an
+/// uncapped hint seeded the estimator at 0.9 times the layer sum and overshot constrained uplinks.
 @internal
 int? computeTrackStartBitrate(TrackBitrateInfo trackbr, [Duration? connectionSetupTime]) {
   if (trackbr.maxbr < minTargetBitrateKbps) {
     return null;
   }
   final calculated = (trackbr.maxbr * startBitrateMultiplier).round();
-  return math.min(calculated, computeStartBitrateCap(connectionSetupTime));
+  final cap = trackbr.isScreenShare ? maxScreenShareStartBitrateKbps : computeStartBitrateCap(connectionSetupTime);
+  return math.min(calculated, cap);
 }
 
 /// The single start bitrate for this peer connection: the largest hint among the video
